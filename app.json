@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "karteikarten-app",
+    "name": "Karteikarten",
     "slug": "karteikarten-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a2e"
     },
     "ios": {
       "supportsTablet": true
@@ -23,7 +23,13 @@
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "webpack",
+      "name": "Karteikarten",
+      "shortName": "Karteikarten",
+      "description": "Englisch Vokabeln lernen",
+      "themeColor": "#1a1a2e",
+      "backgroundColor": "#1a1a2e"
     }
   }
 }
