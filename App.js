@@ -1467,15 +1467,20 @@ export default function App() {
   };
 
   const clearAllTryAgain = async () => {
-    Alert.alert('Try Again leeren', 'Alle Wörter aus "Try Again" entfernen?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Leeren', style: 'destructive', onPress: async () => {
-        const col = activeCollection || 'Allgemein';
-        const newData = { ...tryAgainData, [col]: {} };
-        setTryAgainData(newData);
-        await AsyncStorage.setItem(TRYAGAIN_KEY, JSON.stringify(newData));
-      }},
-    ]);
+    const doClear = async () => {
+      const col = activeCollection || 'Allgemein';
+      const newData = { ...tryAgainData, [col]: {} };
+      setTryAgainData(newData);
+      await AsyncStorage.setItem(TRYAGAIN_KEY, JSON.stringify(newData));
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Try Again leeren\nAlle Wörter aus "Try Again" entfernen?')) doClear();
+    } else {
+      Alert.alert('Try Again leeren', 'Alle Wörter aus "Try Again" entfernen?', [
+        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Leeren', style: 'destructive', onPress: doClear },
+      ]);
+    }
   };
 
   // ── Add word ───────────────────────────────────────────
@@ -1498,31 +1503,35 @@ export default function App() {
     setAddModal(false);
   };
 
+  const confirmDelete = (title, message, onConfirm) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n${message}`)) onConfirm();
+    } else {
+      Alert.alert(title, message, [
+        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Löschen', style: 'destructive', onPress: onConfirm },
+      ]);
+    }
+  };
+
   const deleteWord = (id) => {
-    Alert.alert('Löschen', 'Dieses Wort wirklich löschen?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Löschen', style: 'destructive', onPress: () => saveWords(words.filter(w => w.id !== id)) },
-    ]);
+    confirmDelete('Löschen', 'Dieses Wort wirklich löschen?', () =>
+      saveWords(words.filter(w => w.id !== id))
+    );
   };
 
   const deleteGroup = (groupName) => {
     const count = words.filter(w => (w.collection || 'Allgemein') === activeCollection && (w.group || 'Allgemein') === groupName).length;
-    Alert.alert('Gruppe löschen', `"${groupName}" mit ${count} Wörtern wirklich löschen?`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Löschen', style: 'destructive', onPress: () =>
-        saveWords(words.filter(w => !((w.collection || 'Allgemein') === activeCollection && (w.group || 'Allgemein') === groupName)))
-      },
-    ]);
+    confirmDelete('Gruppe löschen', `"${groupName}" mit ${count} Wörtern wirklich löschen?`, () =>
+      saveWords(words.filter(w => !((w.collection || 'Allgemein') === activeCollection && (w.group || 'Allgemein') === groupName)))
+    );
   };
 
   const deleteCollection = (colName) => {
     const count = words.filter(w => (w.collection || 'Allgemein') === colName).length;
-    Alert.alert('Sammlung löschen', `"${colName}" mit ${count} Wörtern wirklich löschen?`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Löschen', style: 'destructive', onPress: () =>
-        saveWords(words.filter(w => (w.collection || 'Allgemein') !== colName))
-      },
-    ]);
+    confirmDelete('Sammlung löschen', `"${colName}" mit ${count} Wörtern wirklich löschen?`, () =>
+      saveWords(words.filter(w => (w.collection || 'Allgemein') !== colName))
+    );
   };
 
   const openWordList = (groupName) => {
