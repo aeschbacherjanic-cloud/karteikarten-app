@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 const STORAGE_KEY = 'karteikarten_words';
 const INIT_KEY    = 'karteikarten_initialized_v7';
 const STATS_KEY   = 'karteikarten_stats';
+const TRYAGAIN_KEY = 'karteikarten_tryagain';
 
 const DEFAULT_WORDS = [
   { en: 'sumo', de: 'Sumo', definition: 'a Japanese form of wrestling, done by men who are very large', group: 'Gruppe 1', collection: 'First vocabulary' },
@@ -1295,6 +1296,7 @@ export default function App() {
   const [hintVisible, setHintVisible]       = useState(false);
   const [hintWord, setHintWord]             = useState(null);
   const [groupStats, setGroupStats]         = useState({});
+  const [tryAgainData, setTryAgainData]     = useState({}); // { collection: { wordId: count } }
   // Add word modal
   const [addModal, setAddModal]             = useState(false);
   const [addPreGroup, setAddPreGroup]       = useState('');
@@ -1331,6 +1333,8 @@ export default function App() {
       }
       const statsRaw = await AsyncStorage.getItem(STATS_KEY);
       setGroupStats(statsRaw ? JSON.parse(statsRaw) : {});
+      const tryRaw = await AsyncStorage.getItem(TRYAGAIN_KEY);
+      setTryAgainData(tryRaw ? JSON.parse(tryRaw) : {});
     })();
   }, []);
 
@@ -1363,6 +1367,15 @@ export default function App() {
     return Object.entries(map).map(([name, count]) => ({ name, count }));
   }, [words, activeCollection]);
 
+  const tryAgainWords = useMemo(() => {
+    if (!activeCollection) return [];
+    const colData = tryAgainData[activeCollection] || {};
+    return words.filter(w =>
+      (w.collection || 'Allgemein') === activeCollection &&
+      (colData[w.id] || 0) >= 2
+    );
+  }, [words, tryAgainData, activeCollection]);
+
   // ── Flip animation ─────────────────────────────────────
   const doFlip = () => {
     Animated.spring(flipAnim, {
@@ -1384,10 +1397,18 @@ export default function App() {
 
   const startSession = (selectedMode) => {
     const groupName  = pendingGroup;
-    const gWords     = words.filter(w =>
-      (w.collection || 'Allgemein') === activeCollection &&
-      (w.group || 'Allgemein') === groupName
-    );
+    const gWords = groupName === 'Try Again'
+      ? (() => {
+          const colData = tryAgainData[activeCollection] || {};
+          return words.filter(w =>
+            (w.collection || 'Allgemein') === activeCollection &&
+            (colData[w.id] || 0) >= 2
+          );
+        })()
+      : words.filter(w =>
+          (w.collection || 'Allgemein') === activeCollection &&
+          (w.group || 'Allgemein') === groupName
+        );
     const shuffled = [...gWords].sort(() => Math.random() - 0.5);
     setMode(selectedMode);
     setActiveGroup(groupName);
@@ -1418,10 +1439,43 @@ export default function App() {
     } else { setQueue(next); resetFlip(); }
   };
 
-  const markUnknown = () => {
+  const markUnknown = async () => {
     const [current, ...rest] = queue;
+    if (current && activeGroup !== 'Try Again') {
+      const col = activeCollection || 'Allgemein';
+      const newData = {
+        ...tryAgainData,
+        [col]: {
+          ...(tryAgainData[col] || {}),
+          [current.id]: (tryAgainData[col]?.[current.id] || 0) + 1,
+        },
+      };
+      setTryAgainData(newData);
+      await AsyncStorage.setItem(TRYAGAIN_KEY, JSON.stringify(newData));
+    }
     setQueue([...rest, current]);
     resetFlip();
+  };
+
+  const removeFromTryAgain = async (wordId) => {
+    const col = activeCollection || 'Allgemein';
+    const newColData = { ...(tryAgainData[col] || {}) };
+    delete newColData[wordId];
+    const newData = { ...tryAgainData, [col]: newColData };
+    setTryAgainData(newData);
+    await AsyncStorage.setItem(TRYAGAIN_KEY, JSON.stringify(newData));
+  };
+
+  const clearAllTryAgain = async () => {
+    Alert.alert('Try Again leeren', 'Alle Wörter aus "Try Again" entfernen?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      { text: 'Leeren', style: 'destructive', onPress: async () => {
+        const col = activeCollection || 'Allgemein';
+        const newData = { ...tryAgainData, [col]: {} };
+        setTryAgainData(newData);
+        await AsyncStorage.setItem(TRYAGAIN_KEY, JSON.stringify(newData));
+      }},
+    ]);
   };
 
   // ── Add word ───────────────────────────────────────────
@@ -1614,7 +1668,7 @@ export default function App() {
         </View>
 
         <FlatList
-          data={groups}
+          data={tryAgainWords.length > 0 ? [{ name: 'Try Again', count: tryAgainWords.length, isTryAgain: true }, ...groups] : groups}
           keyExtractor={item => item.name}
           style={styles.list}
           contentContainerStyle={styles.listContent}
@@ -1632,6 +1686,25 @@ export default function App() {
             </TouchableOpacity>
           }
           renderItem={({ item }) => {
+            if (item.isTryAgain) {
+              return (
+                <View style={[styles.groupRow, { borderLeftWidth: 3, borderLeftColor: '#e74c3c' }]}>
+                  <TouchableOpacity style={styles.groupItem} onPress={() => openModeModal('Try Again')}>
+                    <View style={styles.groupLeft}>
+                      <Text style={[styles.groupName, { color: '#e74c3c' }]}>🔁 Try Again</Text>
+                      <Text style={styles.groupCount}>{item.count} Wörter</Text>
+                    </View>
+                    <Text style={styles.groupArrow}>›</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.groupAddBtn} onPress={() => openWordList('Try Again')}>
+                    <Text style={styles.groupAddBtnText}>≡</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.groupDelBtn} onPress={clearAllTryAgain}>
+                    <Text style={styles.groupDelBtnText}>🗑</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
             const statKey   = `${activeCollection}////${item.name}`;
             const doneCount = groupStats[statKey] || 0;
             return (
@@ -1673,10 +1746,13 @@ export default function App() {
                 </TouchableOpacity>
               </View>
               <FlatList
-                data={words.filter(w =>
-                  (w.collection || 'Allgemein') === activeCollection &&
-                  (w.group || 'Allgemein') === wordListGroup
-                )}
+                data={wordListGroup === 'Try Again'
+                  ? tryAgainWords
+                  : words.filter(w =>
+                      (w.collection || 'Allgemein') === activeCollection &&
+                      (w.group || 'Allgemein') === wordListGroup
+                    )
+                }
                 keyExtractor={item => item.id}
                 renderItem={({ item }) => (
                   <View style={styles.wordListItem}>
@@ -1684,11 +1760,15 @@ export default function App() {
                       <Text style={styles.wordListEn}>{item.en}</Text>
                       <Text style={styles.wordListDe}>{item.de}</Text>
                     </View>
-                    {activeCollection !== 'First vocabulary' && (
+                    {wordListGroup === 'Try Again' ? (
+                      <TouchableOpacity onPress={() => removeFromTryAgain(item.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Text style={styles.groupDelBtnText}>🗑</Text>
+                      </TouchableOpacity>
+                    ) : activeCollection !== 'First vocabulary' ? (
                       <TouchableOpacity onPress={() => deleteWord(item.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                         <Text style={styles.groupDelBtnText}>🗑</Text>
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </View>
                 )}
                 ListEmptyComponent={<Text style={styles.emptyText}>Keine Wörter in dieser Gruppe.</Text>}
